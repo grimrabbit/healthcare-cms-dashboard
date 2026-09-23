@@ -1,3 +1,4 @@
 Hospital Type,avg_sepsis_score,hospital_count
-Critical Access Hospitals,65.7,226
-Acute Care Hospitals,62.7,2624
+Critical Access Hospitals,67.6,170
+Acute Care Hospitals,63.1,2633
+Acute Care - Department of Defense,59.9,12
