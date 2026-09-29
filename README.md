@@ -1,294 +1,217 @@
-# U.S. Hospital ED Access & Quality Benchmarking (CMS Data)
+# Aldermere Health: Hospital Network ED Access & Quality Report
 
-## Live Artifacts
+**Live dashboard:** [ED Wait Time by State (Tableau Public)](https://public.tableau.com/app/profile/danny.lin4647/viz/EDWaitTimeByState/Dashboard1)
 
-- **Tableau Public dashboard:** [ED Wait Time by State](https://public.tableau.com/app/profile/danny.lin4647/viz/EDWaitTimeByState/Dashboard1)
-- **Analysis notebook:** [`notebook/cms_analysis.ipynb`](notebook/cms_analysis.ipynb)
-- **Hospital scorecard:** [`outputs/view6_hospital_scorecard.csv`](outputs/view6_hospital_scorecard.csv)
+## Client Background
 
----
+Aldermere Health is a regional Medicare Advantage plan preparing for its next hospital
+contracting cycle, including expansion into new states. As part of that cycle, the plan
+intends to introduce a "preferred hospital" designation in its member provider directory,
+and the initial proposal is to award it based on CMS hospital star ratings.
 
-## Business Problem
+Two concerns prompted a closer look. Member Services has logged complaints about long
+emergency department waits at some in-network hospitals, including highly rated ones.
+And the Quality team has flagged that hospital readmissions among members count against
+the plan's own quality measures. The Network Management team commissioned an analysis of
+public CMS hospital data to test whether star ratings are a sound basis for the
+designation, and to identify what else should inform contract reviews.
 
-This analysis is written from the perspective of a regional health plan's network
-management team, using publicly published CMS data.
+This analysis is guided by the following business questions:
 
-A network management team reviews its contracted hospitals
-when contracts come up for renewal and when deciding which hospitals to highlight to
-members. CMS publishes the data needed to compare hospitals on emergency department
-access and care quality, but it is spread across separate reporting files, and the
-most visible summary metric, the CMS overall star rating, is easy to treat as a
-stand-in for everything else.
+1. Does a hospital's star rating reflect how quickly its emergency department sees patients?
+2. What is the right benchmark for a hospital's ED performance: national, statewide, or its in-state peers?
+3. Where is hospital readmission performance weakest?
+4. What should the preferred-hospital designation and contract reviews be based on?
 
-This project consolidates CMS hospital data into a single SQL layer and answers three
-questions for that team:
+Key insights and recommendations are structured around three core areas:
 
-1. **Can CMS star ratings stand in for ED access** when comparing hospitals?
-2. **What is the right comparison group** for a hospital's ED performance: the nation,
-   its state, or its in-state peers?
-3. **Where is readmission performance concentrated**, given CMS's Hospital Readmissions
-   Reduction Program (HRRP) penalizes hospitals for excess readmissions?
+- **ED Access:** median time from ED arrival to departure, in-state rank
+- **Quality:** CMS overall star rating, sepsis care score
+- **Readmissions:** share of graded readmission measures worse than the national average
 
-## Project Goals
+*Aldermere Health is a fictional client. All hospital data is real, publicly published CMS data.*
 
-- Define a single, documented cohort rule for CMS quality measures and apply it the
-  same way in every view.
-- Produce an in-state benchmarking view a network team can use to compare a hospital
-  against its local peers.
-- Deliver a one-row-per-hospital scorecard that puts ED access and quality metrics
-  side by side.
+## Data & Methodology
 
----
+The analysis uses two CMS files, joined on each hospital's CMS Certification Number. Both
+files are wide (38 and 16 columns); the diagram shows only the fields this project uses.
+
+```mermaid
+erDiagram
+    HOSPITAL_GENERAL_INFORMATION ||--o{ TIMELY_AND_EFFECTIVE_CARE : "Facility ID"
+    HOSPITAL_GENERAL_INFORMATION {
+        string facility_id PK "CMS Certification Number"
+        string facility_name
+        string state
+        string hospital_type
+        int star_rating "1 to 5"
+        int readm_measures_graded
+        int readm_measures_worse
+    }
+    TIMELY_AND_EFFECTIVE_CARE {
+        string facility_id FK
+        string measure_id "OP_18b (ED wait) or SEP_1 (sepsis)"
+        int score
+        int sample "patients the score is based on"
+    }
+```
+
+- **Sources:** CMS Hospital General Information (release dated July 22, 2026) and CMS
+  Timely and Effective Care, Hospital (ED and sepsis measures, July 2024 to June 2025).
+- **Which hospitals count:** a hospital is included for a measure when CMS reports a
+  score for it based on at least 30 patients. The same rule applies to every measure.
+  4,073 hospitals have valid ED data; 4,064 of them appear in the hospital information file.
+- **Tools:** SQL (SQLite) for all views and the scorecard, Python for statistics and
+  charts, Tableau Public for the dashboard.
+- **Where the work lives:** SQL views in [`sql/`](sql/) with their CSV outputs in
+  [`outputs/`](outputs/); statistical detail, including the correlation and variance
+  calculations behind these findings, in the [analysis notebook](notebook/cms_analysis.ipynb).
 
 ## Executive Summary
 
-1. **Star rating does not predict ED wait time.** Across 2,964 rated hospitals, the
-   correlation is r = -0.04; star rating explains 0.17% of the variation in ED wait.
-   Average waits range only from 168 to 178 minutes across the five rating levels.
-   110 of 318 five-star hospitals (34.6%) are in the slowest quarter of their state.
-2. **Most variation in ED wait time is within states, not between them.** 72.8% of the
-   variance sits between hospitals in the same state. In California, median ED waits
-   range from 70 to 464 minutes.
-3. **Readmission performance is concentrated in a few states.** Nationally, 12.8% of
-   graded readmission measures are worse than the national average. New Jersey (23.0%),
-   Massachusetts (22.0%), Florida (21.4%) and New York (20.7%) run well above that;
-   Utah (0.8%), Idaho (2.5%) and South Dakota (2.6%) run well below it.
+Star ratings do not tell Aldermere how quickly a hospital's emergency department sees
+patients, and state averages hide most of the difference between hospitals. A preferred-
+hospital designation based on star rating alone would reward hospitals regardless of ED
+access. Readmission performance, which affects the plan's own quality measures, is weakest
+in a small group of states. The designation and contract reviews should look at ED access,
+quality and readmissions as separate measures, each judged against in-state peers.
 
-These findings show **where** performance differs. They do not show **why**.
+### 1. Star Ratings Don't Reflect ED Speed
 
----
+- **Average ED wait barely changes with star rating.** Across 2,964 rated hospitals,
+  one-star hospitals average 178 minutes and five-star hospitals average 175. The lowest
+  average, 168 minutes, belongs to four-star hospitals.
+- **Five-star hospitals are no more likely to have fast EDs.** Compared with other
+  hospitals in their own state, 15% of five-star hospitals are in the fastest quarter and
+  35% are in the slowest. Every rating level shows roughly the same mix.
+- **An earlier result pointing the other way came from outdated data.** An older hospital
+  information file suggested higher-rated hospitals had shorter waits. 42% of hospitals'
+  ratings have changed since that file; with current ratings, the relationship disappears.
 
-## Architecture
+### 2. The Real Differences Are Within States
 
-```
-CMS Provider Data Catalog
-        │
-        ▼
-┌───────────────────────────┐
-│   Raw Data (data/raw/)    │   Timely_and_Effective_Care-Hospital.csv
-│                           │   HospInfo_2026.csv (current release)
-│                           │   HospInfo.csv (older release, kept for comparison)
-└─────────────┬─────────────┘
-              │
-      ┌───────┴───────────────────────────┐
-      ▼                                   ▼
-┌───────────────────────────┐   ┌───────────────────────────┐
-│   SQL Layer (SQLite)      │   │   Python Layer (Jupyter)  │
-│   00 cohort definitions   │   │   Re-derives the same     │
-│   01 hospital attributes  │   │   cohort from raw files;  │
-│   Views 1-6               │   │   correlation, variance   │
-└─────────────┬─────────────┘   │   decomposition, charts   │
-              ▼                 └───────────────────────────┘
-┌───────────────────────────┐
-│   outputs/ (CSV)          │
-└─────────────┬─────────────┘
-              ▼
-┌───────────────────────────┐
-│   Tableau Public          │
-└───────────────────────────┘
-```
+- **About three-quarters of the variation in ED wait is between hospitals in the same
+  state.** Across 4,073 hospitals, 72.8% of the variation sits within states rather than
+  between them.
+- **Gaps inside a state can exceed gaps between states.** State averages range from 114
+  minutes (North Dakota) to 330 (Washington, D.C.), but California's hospitals alone range
+  from 70 to 464 minutes.
+- **State-level benchmarks miss the comparisons that matter for contracting.** A network
+  team choosing between hospitals in the same market needs to see how they compare with
+  each other, which a state average can't show.
 
-The notebook reads the raw files directly rather than the SQL outputs. It serves as an
-independent second path to the same numbers; both paths produce the same cohort counts
-and results.
+### 3. Readmission Problems Concentrate in a Few States
 
-**Tools:** SQLite (DB Browser for SQLite), Python (pandas, SciPy, seaborn), Tableau Public.
+- **Nationally, 12.8% of graded readmission measures are worse than average.** In New
+  Jersey (23.0%), Massachusetts (22.0%), Florida (21.4%) and New York (20.7%), the rate is
+  close to double that.
+- **The lowest rates are in Utah (0.8%), Idaho (2.5%) and South Dakota (2.6%).**
+- **Counting measures, not hospitals, gives a fairer comparison.** Flagging a whole hospital
+  as "worse" whenever any one measure is worse favors hospitals graded on fewer measures:
+  hospitals graded on 1 measure were flagged 0.6% of the time, those graded on 11 measures
+  77.8% of the time. That made states with many small rural hospitals look better than
+  they are.
 
----
+### 4. Recommendations
 
-## Data Sources
+- **Don't base the preferred-hospital designation on star rating alone.** Add ED wait as a
+  separate criterion and show it alongside star rating in the provider directory.
+- **Benchmark each hospital against its in-state peers at contract review.** Use the
+  hospital scorecard to flag hospitals in their state's slowest quarter for discussion.
+- **Focus readmission efforts where the problem concentrates.** Prioritize post-discharge
+  follow-up for members in the highest-readmission states, and identify which conditions
+  drive those ratings before designing programs.
 
-| File | Contents | Period |
-|---|---|---|
-| `Timely_and_Effective_Care-Hospital.csv` | One row per hospital per measure (138,173 rows, 4,660 facilities) | OP_18b and SEP_1: Jul 2024 - Jun 2025 |
-| `HospInfo_2026.csv` | CMS Hospital General Information: star rating, hospital type, ownership, readmission measure counts (5,419 hospitals) | Last modified 2026-07-22, released 2026-08-13 |
-| `HospInfo.csv` | Older Hospital General Information release | Not reliably dated; kept to document the comparison below |
+## Insights Deep-Dive
 
-**Measures used**
+### Star Rating vs. ED Access
 
-- **OP_18b:** median time from ED arrival to departure, in minutes.
-- **SEP_1:** percentage of sepsis cases receiving the full recommended care bundle.
-- **Readmission measure counts:** for each hospital, how many readmission measures CMS
-  graded and how many came back better than, no different from, or worse than the
-  national average.
+If star rating predicted ED speed, five-star hospitals would sit mostly in the fastest
+quarter of their state. Instead, every rating level has about the same mix, and five-star
+hospitals are slightly more likely than others to be in the slowest quarter. A member
+directed to a five-star hospital is not, by that choice, being directed to faster
+emergency care.
 
-## Metric Definitions
+No rating level reaches 25% in the fastest quarter because hospitals without a star
+rating, mostly small critical access hospitals, take up many of the fastest spots: 51% of
+unrated hospitals fall in their state's fastest quarter.
 
-All cohort rules live in [`sql/00_cohort_definitions.sql`](sql/00_cohort_definitions.sql)
-so every view uses the same population.
+This finding reversed during the project. An earlier version joined the 2024-25 ED data to
+an older, undated hospital information file and appeared to show that higher-rated
+hospitals had shorter waits. Of the 4,344 hospitals present in both files, 42% have a
+different star rating in the current release. Once the current file replaced it, the
+relationship disappeared.
 
-| Decision | Rule | Why |
-|---|---|---|
-| Valid score | Score is numeric | CMS reports suppressed or missing values as "Not Available" |
-| Minimum sample | Sample >= 30 patients, for every measure | One threshold, applied consistently; below 30, a hospital's score is too unstable to compare |
-| No upper cap on sample | Large samples kept | Very large sample values reflect hospitals reporting all cases rather than a sample, not data errors. Removing them moved no state average by more than 2.5 minutes |
-| Join key | CMS Certification Number (`Facility ID`) | Normalized in [`sql/01_hospinfo_current.sql`](sql/01_hospinfo_current.sql) so zero-padded and alphanumeric IDs match correctly |
-| Readmission rate | Worse measures / graded measures | See the readmissions section below for why a hospital-level flag was rejected |
+![Star rating vs ED wait quarter](docs/screenshots/star_rating_ed_quartiles.png)
 
-**Resulting cohort:** 4,073 hospitals with a valid OP_18b score; 4,064 match the current
-Hospital General Information file; 2,964 of those have a star rating.
+### ED Wait Within and Between States
 
----
+Among the 12 states with the most hospitals, median ED waits range from 119 minutes
+(Kansas) to 206 minutes (New York). But the spread inside each state is wide: in Georgia,
+the middle 80% of hospitals range from 98 to 254 minutes, a wider gap than the difference
+between Kansas and New York. Each box below covers the middle half of hospitals in that
+state; the lines extend to the middle 80%.
 
-## Findings
+For a network team, this means the useful question is how a hospital compares with others
+in the same market. State averages, including the state map in this project's dashboard,
+show where waits are long overall but hide which hospitals within a state are driving it.
 
-### 1. Star rating is not a useful predictor of ED wait time
+![ED wait by state](docs/screenshots/ed_wait_by_state.png)
 
-![Star rating vs ED wait](docs/screenshots/scatter_star_rating.png)
+### Readmissions by State
 
-| Star rating | Hospitals | Mean ED wait (min) |
-|---|---|---|
-| 1 | 187 | 178 |
-| 2 | 638 | 175 |
-| 3 | 944 | 174 |
-| 4 | 876 | 168 |
-| 5 | 319 | 175 |
+CMS grades hospitals on up to 11 readmission measures, each rated better than, no different
+from, or worse than the national average. 4,264 hospitals are graded on at least one;
+children's, psychiatric and several other hospital types are not graded.
 
-Pearson r = -0.041 (p = 0.027), r² = 0.17%. The p-value says the relationship is
-unlikely to be exactly zero, but at this sample size even a tiny effect is detectable.
-The r² is what matters for a decision: star rating explains almost none of the
-difference between a fast ED and a slow one.
-
-**How this finding changed during the project.** An earlier version joined 2024-25 ED
-data to an older, undated Hospital General Information file and found r = -0.205. Of the
-4,344 hospitals present in both files, 1,823 (42%) have a different star rating in the
-current release. The earlier correlation reflected mismatched time periods, not a real
-relationship. Updating the file also raised the join match rate from 95.2% to 99.8% of
-valid ED hospitals.
-
-### 2. Hospitals differ far more within states than between them
-
-![ED wait by state](docs/screenshots/boxplot_state_spread.png)
-
-State averages range from 114.3 minutes (North Dakota) to 330.0 minutes (Washington, D.C.,
-6 hospitals). But a variance decomposition shows 72.8% of all variation in ED wait sits
-between hospitals in the same state. A state-level map, including the one in this
-project's dashboard, hides most of the real differences.
-
-[`sql/view4_hospital_rankings.sql`](sql/view4_hospital_rankings.sql) ranks every hospital
-against the others in its state using `RANK() OVER (PARTITION BY state ...)`.
-
-### 3. Readmission performance is concentrated in a few states
+The same states rank highest and lowest whether readmissions are counted by measure or by
+hospital, but the measure-level rate gives a more accurate sense of the size of the gap.
+Puerto Rico shows the highest rate (24.3%) but is based on only 70 graded measures, so it
+is less reliable than the states below it.
 
 ![Readmissions by state](docs/screenshots/readmissions_by_state.png)
 
-4,264 hospitals are graded on at least one readmission measure (Acute Care, Critical
-Access and VA hospitals only). Nationally, 12.8% of graded measures are worse than the
-national average.
-
-**Why the metric counts measures, not hospitals.** A first version flagged a hospital as
-"worse" if any of its graded measures was worse. That favors hospitals graded on fewer
-measures:
-
-| Measures graded | Hospitals flagged "worse" |
-|---|---|
-| 1 | 0.6% |
-| 6 | 52.2% |
-| 11 | 77.8% |
-
-Critical Access Hospitals average 3.2 graded measures versus 7.4 for Acute Care, so rural
-states looked better partly by construction. The measure-level rate removes that effect.
-The same states still rank highest and lowest, but the gap between them is smaller than
-the hospital-level flag suggested.
-
-Puerto Rico has the highest rate (24.3%) but on only 70 graded measures, so its rate is
-less stable than the states below it.
-
-### Supporting view: sepsis care by hospital type
-
-| Hospital type | Avg SEP_1 score | Hospitals |
-|---|---|---|
-| Critical Access | 67.6 | 170 |
-| Acute Care | 63.1 | 2,633 |
-| Acute Care - Department of Defense | 59.9 | 12 |
-
-Critical Access Hospitals score higher on sepsis care at every sample threshold tested,
-but the size of the gap depends on the threshold: 2.3 points at Sample >= 1, 2.9 at >= 20,
-and 4.5 at >= 30. The direction is consistent; the magnitude is not.
-
----
-
 ## Recommendations
 
-For a health plan network management team:
+Aldermere should treat ED access and star rating as separate questions rather than letting
+one stand in for the other. Star rating can remain part of the preferred-hospital
+designation, but ED wait should be a separate criterion, displayed next to star rating so
+members and network staff can see both.
+
+At contract review, each hospital should be compared with its in-state peers rather than
+with state or national averages. The [hospital scorecard](outputs/view6_hospital_scorecard.csv)
+is built for this: one row per hospital showing its star rating, ED wait, rank and quarter
+among hospitals in its state, sepsis care score and readmission rate. It deliberately has
+no single combined score, since weighting these measures against each other is a decision
+for the network team, not something the data can settle.
+
+For readmissions, the plan should look first at members discharged from hospitals in New
+Jersey, Massachusetts, Florida and New York, and prioritize post-discharge follow-up there.
+Before designing a program, it should find out which conditions drive those hospitals'
+ratings.
 
 | Finding | What it means | Recommendation |
 |---|---|---|
-| Star rating does not predict ED wait (r = -0.04) | A directory or referral tool that uses star rating as shorthand for "good hospital" says nothing about ED access | Show ED wait (OP_18b) alongside star rating in provider directories and network reviews, as a separate dimension |
-| 72.8% of ED wait variance is within states | Hospitals under the same state policy and payer environment differ widely | Benchmark hospitals against in-state peers ([View 4](sql/view4_hospital_rankings.sql)). Use the scorecard to flag bottom-quartile hospitals for review at contract renewal |
-| Readmission performance concentrates in NJ, MA, FL, NY | Hospitals in these states carry concentrated HRRP penalty exposure | Prioritize post-discharge follow-up for members discharged from hospitals with worse-rated measures in these states |
+| Star rating does not reflect ED speed | Highly rated hospitals are not necessarily faster | Add ED wait as a separate criterion for the preferred-hospital designation |
+| Most ED wait variation is within states | State averages hide the differences that matter for contracting | Compare each hospital to in-state peers using the scorecard |
+| Readmission problems concentrate in NJ, MA, FL, NY | Members discharged there carry the most readmission risk | Prioritize post-discharge follow-up in those states |
 
-### Hospital scorecard
+### What to Look at Next
 
-[`sql/view6_hospital_scorecard.sql`](sql/view6_hospital_scorecard.sql) produces one row
-per hospital (4,064 rows): star rating, ED wait, in-state rank, in-state quartile, sepsis
-score and readmission measure rate. It deliberately has **no composite score**. Combining
-these metrics into one grade would require weighting choices this data cannot justify,
-so the scorecard shows them side by side and leaves the weighting to the reviewer.
-
-### Next analysis
-
-- **What explains the within-state spread?** Test whether hospital size, ED volume or
-  ownership accounts for the 72.8% within-state variance. The current data shows the
-  spread exists; it does not explain it.
-- **Which conditions drive readmission ratings?** The current file reports counts of
-  better and worse measures, not which conditions they cover. Condition-level
-  readmission data would show where follow-up programs should focus.
-
----
+- **Why hospitals in the same state differ so much.** Hospital size, ED volume and ownership
+  are the first factors to test. This data shows the differences exist; it does not
+  explain them.
+- **Which conditions drive readmission ratings.** CMS's summary file counts better and worse
+  ratings but does not say which conditions they cover. Condition-level data would show
+  where follow-up programs should focus.
 
 ## Limitations
 
-- **Findings are descriptive.** They show where hospitals differ, not why. No finding
-  here should be read as a cause.
-- **Children's hospitals have no SEP_1 scores** (all 94 report "Not Available"), so the
-  sepsis view covers Acute Care, Critical Access and Department of Defense hospitals only.
-- **Long-term care hospitals are excluded.** They report a separate measure set with no
-  ED or SEP_1 measures.
-- **Star ratings and measure periods differ.** The star rating combines many measures with
-  different reporting periods, so it cannot be matched exactly to the Jul 2024 - Jun 2025
-  ED data.
-- **Small groups are unstable.** States with few hospitals (for example D.C. with 6) and
-  Puerto Rico's 70 readmission measures produce less reliable rates. In-state quartiles
-  are left blank for states with fewer than 10 ranked hospitals.
-- **9 of 4,073 ED hospitals** do not appear in the current Hospital General Information
-  file and are excluded from views that need hospital attributes.
-
----
-
-## Repository Structure
-
-```
-healthcare-cms-dashboard/
-├── README.md
-├── data/
-│   └── raw/
-│       ├── Timely_and_Effective_Care-Hospital.csv
-│       ├── HospInfo_2026.csv
-│       └── HospInfo.csv
-├── sql/
-│   ├── 00_cohort_definitions.sql
-│   ├── 01_hospinfo_current.sql
-│   ├── view1_ed_by_state.sql
-│   ├── view2_sepsis_by_type.sql
-│   ├── view3_rating_vs_wait.sql
-│   ├── view4_hospital_rankings.sql
-│   ├── view5_readmissions_by_state.sql
-│   └── view6_hospital_scorecard.sql
-├── outputs/
-│   └── view1-6 CSV outputs
-├── notebook/
-│   └── cms_analysis.ipynb
-└── docs/
-    ├── ED_Wait_Time_By_State.twb
-    └── screenshots/
-```
-
-## How to Reproduce
-
-1. Open a new database in DB Browser for SQLite and import both raw CSVs as tables named
-   `Timely_and_Effective_Care_Hospital` and `HospInfo2026`.
-2. Run `sql/00_cohort_definitions.sql`, then `sql/01_hospinfo_current.sql`.
-3. Run any view file in `sql/` and export the result to `outputs/`.
-4. For the Python analysis, open `notebook/cms_analysis.ipynb` and run all cells; it reads
-   directly from `data/raw/`.
+- The findings describe where hospitals differ, not why.
+- Star ratings combine many measures collected over different time periods, so they cannot
+  be matched exactly to the July 2024 to June 2025 ED data.
+- Rates for small groups are less reliable, including states with few hospitals and Puerto
+  Rico's readmission rate. In-state quarters are not assigned in states with fewer than 10
+  hospitals.
+- Children's hospitals are not scored on sepsis care, and long-term care hospitals do not
+  report ED or sepsis measures.
