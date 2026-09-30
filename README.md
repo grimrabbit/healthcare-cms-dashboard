@@ -79,8 +79,9 @@ erDiagram
 - **Tools:** SQL (SQLite) for all views and the scorecard, Python for statistics and
   charts, Tableau Public for the dashboard.
 - **Where the work lives:** SQL views in [`sql/`](sql/) with their CSV outputs in
-  [`outputs/`](outputs/); statistical detail, including the calculations behind these
-  findings, in the [analysis notebook](notebook/cms_analysis.ipynb).
+  [`outputs/`](outputs/); data quality checks in [`tests/`](tests/); statistical detail,
+  including the calculations behind these findings, in the
+  [analysis notebook](notebook/cms_analysis.ipynb).
 
 ## Executive Summary
 
