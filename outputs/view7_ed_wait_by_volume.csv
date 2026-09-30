@@ -1,0 +1,5 @@
+ed_volume,hospital_count,avg_ed_wait_minutes,avg_minutes_vs_state_avg
+low,1608,123.7,-22.3
+medium,911,170.3,6.3
+high,551,193.0,24.6
+very high,703,198.7,30.5

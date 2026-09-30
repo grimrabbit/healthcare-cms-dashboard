@@ -9,7 +9,7 @@
 -- Ranks and quartiles are computed across ALL valid ED hospitals in the state
 -- (same population as View 4). Quartiles are left NULL in states with fewer
 -- than 10 ranked hospitals, where they aren't meaningful.
--- Sepsis and readmission columns are NULL when a hospital isn't scored.
+-- Sepsis, readmission and ED volume columns are NULL when CMS doesn't report them.
 
 WITH ed_ranked AS (
     SELECT
@@ -29,6 +29,7 @@ SELECT
     h.hospital_type                                 AS "Hospital Type",
     h.hospital_ownership                            AS "Hospital Ownership",
     h.star_rating                                   AS star_rating,
+    ev.ed_volume                                    AS ed_volume,             -- low / medium / high / very high
     r.ed_wait_minutes                               AS ed_wait_minutes,
     r.ed_wait_state_rank                            AS ed_wait_state_rank,
     r.hospitals_in_state                            AS hospitals_in_state,
@@ -46,4 +47,6 @@ INNER JOIN hospinfo_current h
     ON r.facility_id = h.facility_id
 LEFT JOIN sepsis_valid s
     ON r.facility_id = s.facility_id
+LEFT JOIN ed_volume ev
+    ON r.facility_id = ev.facility_id
 ORDER BY h.state, r.ed_wait_state_rank;

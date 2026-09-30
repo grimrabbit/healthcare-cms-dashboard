@@ -45,3 +45,20 @@ FROM Timely_and_Effective_Care_Hospital t
 WHERE t."Measure ID" = 'SEP_1'
   AND t."Score" GLOB '[0-9]*'
   AND CAST(t."Sample" AS INTEGER) >= 30;
+
+-- ED volume category (EDV). Not a score: CMS places each hospital's ED in a
+-- volume category (low, medium, high, very high) based on annual ED visits
+-- (calendar year 2024 in this release). No sample threshold applies.
+-- Hospitals reported as "Not Available" are left out.
+DROP VIEW IF EXISTS ed_volume;
+CREATE VIEW ed_volume AS
+SELECT
+    CASE WHEN t."Facility ID" GLOB '[0-9]*' AND t."Facility ID" NOT GLOB '*[^0-9]*'
+         THEN CAST(t."Facility ID" AS INTEGER)
+         ELSE t."Facility ID" END AS facility_id,
+    t."Score"                    AS ed_volume,
+    CASE t."Score" WHEN 'low' THEN 1 WHEN 'medium' THEN 2
+                   WHEN 'high' THEN 3 WHEN 'very high' THEN 4 END AS ed_volume_order
+FROM Timely_and_Effective_Care_Hospital t
+WHERE t."Measure ID" = 'EDV'
+  AND t."Score" IN ('low', 'medium', 'high', 'very high');
