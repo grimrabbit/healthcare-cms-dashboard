@@ -6,7 +6,7 @@ hospitals as "preferred" based on CMS star ratings, while members are complainin
 emergency department (ED) waits. This analysis tests whether star ratings reflect ED access,
 how hospitals should be benchmarked, and where hospital readmission ratings are weakest.
 
-**Live dashboard:** [ED Wait Time by State (Tableau Public)](https://public.tableau.com/app/profile/danny.lin4647/viz/EDWaitTimeByState/Dashboard1)
+**Live dashboard:** [Hospital ED Access & Quality Dashboard (Tableau Public)](https://public.tableau.com/app/profile/danny.lin4647/viz/EDWaitTimeByState/Overview)
 
 ## Executive Summary
 
@@ -216,6 +216,20 @@ pneumonia, contribute to each hospital's worse ratings. Future analysis should c
 public benchmarks with the plan's own claims data, member complaint records and contract
 terms to confirm whether the same patterns hold for Aldermere's members.
 
+## Dashboard
+
+The [Tableau Public dashboard](https://public.tableau.com/app/profile/danny.lin4647/viz/EDWaitTimeByState/Overview)
+has two pages. **Overview** maps average ED wait by state and shows sepsis care by hospital
+type and ED wait by star rating; clicking a state on the map filters the star rating chart.
+
+![Dashboard overview](docs/screenshots/dashboard_overview.png)
+
+**Hospital Scorecard** puts the recommendation into practice: pick a state and ED volume
+category to see each hospital's rank, its ED wait compared with similar hospitals, and its
+quality and readmission measures.
+
+![Hospital scorecard](docs/screenshots/dashboard_scorecard.png)
+
 ## Data & Methodology
 
 The analysis joins two CMS files on each hospital's CMS Certification Number (Facility ID).
@@ -248,7 +262,8 @@ files are published on the [CMS Provider Data Catalog](https://data.cms.gov/prov
   combine measures collected over several different periods. They cannot be matched exactly.
 - Rates for small groups are less reliable, including states with few hospitals and Puerto
   Rico's readmission rate. Hospitals are not placed into in-state groups in states with
-  fewer than 10 hospitals.
+  fewer than 10 hospitals, and 31 hospitals have fewer than 3 same-state, same-volume peers,
+  so their comparison with similar hospitals means little.
 - Coverage gaps: 9 hospitals with ED data are missing from the hospital file, 300 hospitals
   in the scorecard have no ED volume category, children's hospitals are not scored on sepsis
   care, and long-term care hospitals do not report ED or sepsis measures.
